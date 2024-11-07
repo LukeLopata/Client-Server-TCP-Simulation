@@ -1,1 +1,1 @@
-todo
+print("I am the server")
