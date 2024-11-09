@@ -24,27 +24,27 @@ def connectClient(socket, address):
     return newclient
 
 
-def handleClient(client):
+def handleClient(client_socket, client_address):
     try:
         while True:
-            print("waiting for client message")
-            time.sleep(5)
+            message = client_socket.recv(1024).decode("utf-8")
+            if not message:
+                break
+            print(f"[MESSAGE from {client_address}]: {message}")
             
-    except KeyboardInterrupt:
-        print("stopping server from client thread")
+    except Exception as e:
+        print(f"ERROR {e}")
+    finally:
         server.close()
+        print(f"[INFO] Connection clsoed {client_address}")
         exit()
 
         
-    
-
-
-
-
 
 
 print("Starting Server")
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing the port
 server.bind(('localhost', PORTNUMBER))
 server.listen()
 
@@ -53,11 +53,12 @@ try:
     running = True
     while (running):
         print("Waiting for connection")
-        clientSocket, clientAddress = server.accept()
+        client_socket, client_address = server.accept()
         print("Connection accepted")
-        client = connectClient(clientSocket, clientAddress)
+        client = connectClient(client_socket, client_address)
         
-        thread = threading.Thread(target=handleClient, args=([client]))
+        thread = threading.Thread(target=handleClient, args=(client_socket, client_address))
+        thread.daemon()
         thread.start()
 except KeyboardInterrupt:
     print()
