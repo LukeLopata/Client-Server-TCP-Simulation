@@ -27,10 +27,17 @@ def connectClient(socket, address):
 def handleClient(client_socket, client_address):
     try:
         while True:
-            message = client_socket.recv(1024).decode("utf-8")
+            message = client_socket.recv(1024).decode()
             if not message:
                 break
             print(f"[MESSAGE from {client_address}]: {message}")
+            
+            
+            print(message)
+            print(message.split(",")[1] )
+            if (message.split(",")[1] == " SUB"):
+                print("TODO: handling sub here")
+                client_socket.send("SUB_ACK".encode())
             
     except Exception as e:
         print(f"ERROR {e}")
@@ -58,7 +65,7 @@ try:
         client = connectClient(client_socket, client_address)
         
         thread = threading.Thread(target=handleClient, args=(client_socket, client_address))
-        thread.daemon()
+        thread.daemon = True
         thread.start()
 except KeyboardInterrupt:
     print()
