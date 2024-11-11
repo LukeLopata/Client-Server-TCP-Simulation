@@ -55,7 +55,7 @@ def subscribe(topic):
         # if we timeout, send the message again
         print("subscribe message ACK timeout, sending sub message again")
         messages_out.put(f"{client_name}, SUB, {topic}\n")
-    print(f"SUB to {subject} ACK'ed")
+    print(f"SUB to {topic} ACK'ed")
 
         
     

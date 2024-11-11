@@ -9,8 +9,8 @@ class Client:
         self.name = ""
         self.socket = socket
         self.address = address
-        self.wantsweather = False
-        self.wantsnews = False
+        self.sub_weather = False
+        self.sub_news = False
         
 PORTNUMBER = 1234
 clients = []
@@ -25,19 +25,48 @@ def connectClient(socket, address):
 
 
 def handleClient(client_socket, client_address):
+    
+    client = Client(client_socket, client_address)
+    # handle connection message seperatly
+    message = client.socket.recv(1024).decode()
+    message = message.split(",")
+    if message[1] != "CONN":
+        print(f"First message is not a conn: {message}")
+    client.name = message[0]
+    
+
     try:
+        # handle all messages 
         while True:
-            message = client_socket.recv(1024).decode()
+            message = client.socket.recv(1024).decode()
             if not message:
                 break
-            print(f"[MESSAGE from {client_address}]: {message}")
             
+            print(f"[MESSAGE from {client.address}]: {message}")
+            message = message.split(",")
+            message = [elem.strip() for elem in message] # strip all extra white space from the message
             
-            print(message)
-            print(message.split(",")[1] )
-            if (message.split(",")[1] == " SUB"):
-                print("TODO: handling sub here")
-                client_socket.send("SUB_ACK".encode())
+            if(message[0] == "DISC"):
+                print("TODO disconnect")
+            elif (message[0] != client.name):
+                print("ERROR, name in message doesnt match name on file")
+                print(f"On file: {client.name} Recieved: {message[0]}")
+                
+            elif (message[1] == "SUB"):
+                client.socket.send("SUB_ACK".encode())
+                if message[2].lower() == "news" :
+                    client.sub_news = True
+                    print(f"{client.name} succsefully subscribed to NEWS")
+                elif message[2].lower()== "weather" :
+                    client.sub_news = True
+                    print(f"{client.name} succsefully subscribed to WEATHER")
+                else:
+                    print(f"{client.name} was not able to subscribe to {message[2]}")
+            elif(message[1] == "PUB"):
+                print("TODO handle publishing")
+            else:
+                print(f"ERROR: message tag {message[1]} unknown")
+                
             
     except Exception as e:
         print(f"ERROR {e}")
