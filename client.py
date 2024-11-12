@@ -98,21 +98,17 @@ if __name__ == "__main__":
     # acknowledgments = queue.Queue()
     
     # get user info
-    # client_name = input("What is the name of this client?\n")
-    client_name = "Client Number 1"
+    client_name = input("What is the name of this client?\n")
+    # client_name = "Client Number 1"
     
-    # CLIENTPORTNUMBER = int(input("What is the client port number\n"))
-    CLIENTPORTNUMBER = 5678
+    CLIENTPORTNUMBER = int(input("What is the client port number\n"))
+    # CLIENTPORTNUMBER = 5678
 
     
     # setup socket
     print("Starting Client")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing the port
-
-    # client.connect(("localhost", SERVERPORTNUMBER))
-    # print("Client connected")
-    # messages_out.put(f"{client_name}, CONN\n")
     
     client.connect(("localhost", SERVERPORTNUMBER))
 
@@ -131,7 +127,7 @@ if __name__ == "__main__":
     running = True
     while running:
         
-        action = input("What do you want to do. Options: sub, pub, disc, ReConn\n")
+        action = input("What do you want to do. Options: sub, pub, disc\n")
         
         if action.lower() == "sub":
             topic = input("What topic do you want to subscribe to?\n")

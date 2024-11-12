@@ -3,32 +3,28 @@ import threading
 import time
 import queue
 
-
 class Client:
     def __init__(self, socket, address):
         self.name = ""
         self.socket = socket
         self.address = address
-        
-        self.sub_weather = False   #TODO chnage this to a dictionary for extendability 
-        self.sub_news = False
+        self.subscription = {"NEWS" : False, "WEATHER" : False}
         self.offline = False    #for phase 2
-        self.notifications = queue.Queue() # for reconnection 
+        
         
 PORTNUMBER = 1234
 clients = []
 clientlock = threading.Lock()
-news = queue.Queue()
-weather = queue.Queue()
 
+newsQ = queue.Queue()
+weatherQ = queue.Queue()
+notifications = {"NEWS" : newsQ, "WEATHER" : weatherQ}
 all_news = []
 all_weather = []
 
 
 
-
 def handleClient(client_socket, client_address):
-    
     client = Client(client_socket, client_address)
     
     with clientlock:
@@ -45,9 +41,6 @@ def handleClient(client_socket, client_address):
     
     client.name = message[0]
 
-    
-    # phase 2, dump all of the notification que here
-
     try:
         while True:
             message = client.socket.recv(1024).decode()
@@ -62,39 +55,25 @@ def handleClient(client_socket, client_address):
                 client.socket.send("DISC_ACK".encode())
                 break
 
-                
             elif (message[0] != client.name):
                 print("ERROR, name in message doesnt match name on file")
                 print(f"On file: {client.name} Recieved: {message[0]}")
                 
             elif (message[1] == "SUB"):
-                if message[2].lower() == "news" :
-                    client.sub_news = True
-                    print(f"{client.name} succsefully subscribed to NEWS")
+                if (message[2].upper()) in client.subscription:
+                    client.subscription[message[2].upper()] = True
+                    print(f"{client.name} succsefully subscribed to {message[2].upper()}")
                     client.socket.send("SUB_ACK".encode())
-                elif message[2].lower()== "weather" :
-                    client.sub_weather = True
-                    print(f"{client.name} succsefully subscribed to WEATHER")
-                    client.socket.send("SUB_ACK".encode())
+
                 else:
-                    #print(f"{client.name} was not able to subscribe to {message[2]}")
                     client.socket.send("ERROR: Subscription Failed - Subject Not Found".encode())
 
             elif(message[1] == "PUB"):
-                if message[2] == "news":
-                    if client.sub_news:
-                        news.put(message[3])   
-                    else:
-                        client.socket.send("ERROR: Not Subscribed".encode())
-                elif message[2] == "weather":
-                    if client.sub_weather:
-                        weather.put(message[3])
-                    else:
-                        client.socket.send("ERROR: Not Subscribed".encode())
+                if (message[2].upper()) in client.subscription:
+                    if client.subscription[message[2].upper()]: # if subscribed
+                        notifications[message[2].upper()].put(message[3]) # add the notifcation to the corrisponding Q 
                 else:
                     client.socket.send("ERROR: Subject Not Found".encode())
-                    
-
             else:
                 print(f"ERROR: message tag {message[1]} unknown")
                 
@@ -109,10 +88,10 @@ def handleClient(client_socket, client_address):
      
 def weatherNotifier():
     while True:
-        notification = weather.get() # this will block until there is something to grab
+        notification = notifications["WEATHER"].get() # this will block until there is something to grab
         with clientlock:
             for client in clients:
-                if client.sub_weather:
+                if client.subscription["NEWS"]:
                     if (client.offline):
                         print("PHASE 2 cleint is offline")
                     else:
@@ -123,20 +102,16 @@ def weatherNotifier():
                      
 def newsNotifier():
     while True:
-        notification = news.get() # this will block until there is something to grab
+        notification = notifications["NEWS"].get() # this will block until there is something to grab
         with clientlock:
             for client in clients:
-                if client.sub_news:
+                if client.subscription["NEWS"]:
                     if (client.offline):
                         print("PHASE 2 cleint is offline")
                     else:
                         print("sending message ")
                         client.socket.send(f"NOTICICATION, NEWS, {notification}".encode())
         all_news.append(notification)
-    
-    
-    
-    
     
     
 
@@ -171,13 +146,3 @@ except KeyboardInterrupt:
     print("Closing server")
     server.close()
     exit()
-    
-    
-    
-
-    
-
-
-
-
-
