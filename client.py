@@ -12,6 +12,7 @@ SUB_ACK = threading.Event()
 PUB_EROR = threading.Event()
 CONN_ACK = threading.Event()
 DISC_ACK = threading.Event()
+SUB_FAILED = threading.Event()
 
 
 
@@ -19,17 +20,19 @@ def recevie_messages(client_socket):
     try:
         while True:
             message = client_socket.recv(1024).decode()
+            print(f"[{message}]")
             if message == "CONN_ACK":
                 CONN_ACK.set()
             elif message == "SUB_ACK":
                 SUB_ACK.set()
+            elif message == "ERROR: Subscription Failed - Subject Not Found":
+                SUB_FAILED.set()
             elif message == "DISC_ACK":
                 DISC_ACK.set()
-            elif message == "ERROR: Not Subscribed":
+            elif message == "ERROR: Not Subscribed" :
                 PUB_EROR.set()
                 print("tried to publish info to a topic we are not subscribed to")
             else:
-                print("MESSAGE recived: ", message)
                 messages_in.put(message)
     except Exception as e:
         print(f"ERROR {e} in recevie_messages")
@@ -38,7 +41,7 @@ def recevie_messages(client_socket):
         exit()
             
                 
-def send_messages(client_socket):
+def send_messages():
     while True:
         try:
             message = messages_out.get() # blocks until there is a message in the Que
@@ -50,22 +53,42 @@ def send_messages(client_socket):
         
 def subscribe(topic):
     SUB_ACK.clear()
+    SUB_FAILED.clear()
     messages_out.put(f"{client_name}, SUB, {topic}\n")
-    while not SUB_ACK.wait(timeout = 3): # wait for acknoledgment message. 
+    while not SUB_ACK.wait(timeout = 3) and not SUB_FAILED.wait(timeout = 3): # wait for acknoledgment message. 
         # if we timeout, send the message again
-        print("subscribe message ACK timeout, sending sub message again")
+        print("subscribe request timeout, sending sub message again")
         messages_out.put(f"{client_name}, SUB, {topic}\n")
-    print(f"SUB to {topic} ACK'ed")
+    if SUB_ACK.is_set():
+        print(f"SUB to {topic} ACK'ed")
+    else: 
+        print(f"SUB to {topic} failed")
 
         
     
 def publish(subject, message):
     messages_out.put(f"{client_name}, PUB, {subject}, {message}\n")
     
+def disconnect():
+    messages_out.put("DISC\n")
+    while not DISC_ACK.wait(timeout = 3):
+        print("DISC timeout, resending")
+        messages_out.put("DISC\n")
+    print("Succsefully disconnected")
+    
+def connect(client_name):
+    #
+    CONN_ACK.clear()
+    messages_out.put(f"{client_name}, CONN\n")
+    while not CONN_ACK.wait(timeout = 3):
+        print("Connection not ACK'ed, trying again")
+        messages_out.put(f"{client_name}, CONN\n")
+        
+    print("Client connected")
+
+        
 
     
-
-
 
 
 
@@ -75,47 +98,56 @@ if __name__ == "__main__":
     # acknowledgments = queue.Queue()
     
     # get user info
-    # client_name = input("What is the name of this client?")
+    # client_name = input("What is the name of this client?\n")
     client_name = "Client Number 1"
     
-    #publisher = input("Are you a publisher [Y/N]") 
-    publisher = "y"
-    publisher = (publisher.lower() == "y" or publisher.lower() == "yes")
+    # CLIENTPORTNUMBER = int(input("What is the client port number\n"))
+    CLIENTPORTNUMBER = 5678
+
     
-    # connect and send connection message
+    # setup socket
     print("Starting Client")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing the port
+
+    # client.connect(("localhost", SERVERPORTNUMBER))
+    # print("Client connected")
+    # messages_out.put(f"{client_name}, CONN\n")
+    
     client.connect(("localhost", SERVERPORTNUMBER))
-    print("Client connected")
-    messages_out.put(f"{client_name}, CONN\n")
-        
+
+    
     # start sending and reciveing threads
     recevie_thread = threading.Thread(target = recevie_messages, args=([client]))
     recevie_thread.daemon = True
     recevie_thread.start()
     
-    send_thread = threading.Thread(target = send_messages, args=([client]))
+    send_thread = threading.Thread(target = send_messages, args=([]))
     send_thread.daemon = True
     send_thread.start()
     
+    
+    connect(client_name)
     running = True
     while running:
         
-        action = input("What do you want to do. Options: sub, pub, disc")
+        action = input("What do you want to do. Options: sub, pub, disc, ReConn\n")
         
         if action.lower() == "sub":
-            topic = input("What topic do you want to subscribe to?")
+            topic = input("What topic do you want to subscribe to?\n")
             subscribe(topic.upper())        
         elif action.lower() == "pub":
-            subject = input("What topic do you want to publish to?")
-            message = input("What messaeg would you like to send?")
+            subject = input("What topic do you want to publish to?\n")
+            message = input("What message would you like to send?\n")
             publish(subject, message)
         elif action.lower() == "disc":
-            messages_out.put("DISC\n")
+            disconnect()      
+        # elif action.lower() == "reconn":
+        #     connect( client_name)
+
     
     
     
 
     # Close the connection
-    client.close()
+    client.close(SERVERPORTNUMBER, client_name)
