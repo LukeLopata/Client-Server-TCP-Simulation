@@ -10,8 +10,8 @@ class Client:
         self.address = address
         self.subscription = {"NEWS" : False, "WEATHER" : False}
         self.offline = False    #for phase 2
-        
-        
+
+
 PORTNUMBER = 1234
 clients = []
 clientlock = threading.Lock()
@@ -26,19 +26,18 @@ all_weather = []
 
 def handleClient(client_socket, client_address):
     client = Client(client_socket, client_address)
-    
+
     with clientlock:
         clients.append(client)
     # handle connection message seperatly
-    
+
     message = client.socket.recv(1024).decode()
     print(message)
     message = message.split(",")
-    if message[1] and message[1].strip() != "CONN":
+    if len(message) <= 1 or message[1].strip() != "CONN":
         print(f"ERROR: First message recieved is not a CONN: {message}")
     print(message)
     client.socket.send("CONN_ACK".encode())
-    
     client.name = message[0]
 
     try:
@@ -46,11 +45,11 @@ def handleClient(client_socket, client_address):
             message = client.socket.recv(1024).decode()
             if not message:
                 break
-            
+
             print(f"[MESSAGE from {client.address}]: {message}")
             message = message.split(",")
             message = [elem.strip() for elem in message] # strip all extra white space from the message
-            
+
             if(message[0] == "DISC"):
                 client.socket.send("DISC_ACK".encode())
                 break
@@ -58,7 +57,7 @@ def handleClient(client_socket, client_address):
             elif (message[0] != client.name):
                 print("ERROR, name in message doesnt match name on file")
                 print(f"On file: {client.name} Recieved: {message[0]}")
-                
+
             elif (message[1] == "SUB"):
                 if (message[2].upper()) in client.subscription:
                     client.subscription[message[2].upper()] = True
@@ -76,8 +75,8 @@ def handleClient(client_socket, client_address):
                     client.socket.send("ERROR: Subject Not Found".encode())
             else:
                 print(f"ERROR: message tag {message[1]} unknown")
-                
-            
+
+
     except Exception as e:
         print(f"ERROR {e}")
     finally:
@@ -85,7 +84,7 @@ def handleClient(client_socket, client_address):
         print(f"[INFO] Connection clsoed {client_address}")
         exit()
 
-     
+
 def weatherNotifier():
     while True:
         notification = notifications["WEATHER"].get() # this will block until there is something to grab
@@ -98,8 +97,8 @@ def weatherNotifier():
                         print("sending message ")
                         client.socket.send(f"NOTICICATION, WEATHER, {notification}".encode())
         all_weather.append(notification)
-            
-                     
+
+
 def newsNotifier():
     while True:
         notification = notifications["NEWS"].get() # this will block until there is something to grab
@@ -112,8 +111,8 @@ def newsNotifier():
                         print("sending message ")
                         client.socket.send(f"NOTICICATION, NEWS, {notification}".encode())
         all_news.append(notification)
-    
-    
+
+
 
 
 print("Starting Server")
@@ -122,7 +121,7 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing th
 server.bind(('localhost', PORTNUMBER))
 server.listen()
 
-#make notification thread   
+# make notification threads   
 news_notification_thread = threading.Thread(target=newsNotifier, args=())
 news_notification_thread.daemon = True
 news_notification_thread.start()
@@ -137,7 +136,7 @@ try:
         print("Waiting for connection")
         client_socket, client_address = server.accept()
         print("Connection accepted")
-        
+
         thread = threading.Thread(target=handleClient, args=(client_socket, client_address))
         thread.daemon = True
         thread.start()
