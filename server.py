@@ -4,16 +4,16 @@ import time
 import queue
 
 class Client:
-    def __init__(self, socket, address):
-        self.name = ""
+    def __init__(self, socket, address, name = ""):
+        self.name = name
         self.socket = socket
         self.address = address
         self.subscription = {"NEWS" : False, "WEATHER" : False}
-        self.offline = False    #for phase 2
+        self.offline = False    
 
 
 PORTNUMBER = 1234
-clients = []
+clients = {}
 clientlock = threading.Lock()
 
 newsQ = queue.Queue()
@@ -25,33 +25,51 @@ all_weather = []
 
 
 def handleClient(client_socket, client_address):
-    client = Client(client_socket, client_address)
+    message = client_socket.recv(1024).decode()
+    print(f"     [MESSAGE from {client_address}]: {message}")
 
-    with clientlock:
-        clients.append(client)
-    # handle connection message seperatly
-
-    message = client.socket.recv(1024).decode()
-    print(message)
     message = message.split(",")
-    if len(message) <= 1 or message[1].strip() != "CONN":
-        print(f"ERROR: First message recieved is not a CONN: {message}")
-    print(message)
-    client.socket.send("CONN_ACK".encode())
-    client.name = message[0]
+    if len(message) <= 1 or message[1].strip() != "CONN" and message[0].strip() != "RECONNECT":
+        print(f"ERROR: First message recieved is not a CONN or RECONNECT: {message}")
+    
+    
+    if (message[1].strip() == "CONN"):
+        client_name = message[0].strip()
+        client_socket.send("CONN_ACK".encode())
+        client = Client(client_socket, client_address, client_name)
+        with clientlock:
+            clients[client_name] = client
+    else: # handle reconections
+        
+        client_name = message[1].strip()
+        if client_name in clients: # this shouldnt need a lock because all clients should have unique names
+            # make the client with client_name the client we are suing in this function from now on
+            with clientlock:
+                client = clients[client_name]
+                # update client info for the reconnection
+                client.socket = client_socket
+                client.address = client_address
+                client.offline = False
+            client.socket.send("CONN_ACK".encode())
+        else:
+            print(f"failed to find client with name {client_name} in database")
+            # TODO add a RECONNECT failed message back to the client to tell it that the name was not found in the database
 
+      
     try:
         while True:
+            time.sleep(0.1)
             message = client.socket.recv(1024).decode()
-            if not message:
-                break
+            # if not message:
+            #     break
 
-            print(f"[MESSAGE from {client.address}]: {message}")
+            print(f"     [MESSAGE from {client.address}]: {message}")
             message = message.split(",")
             message = [elem.strip() for elem in message] # strip all extra white space from the message
 
             if(message[0] == "DISC"):
                 client.socket.send("DISC_ACK".encode())
+                client.offline = True
                 break
 
             elif (message[0] != client.name):
@@ -75,13 +93,15 @@ def handleClient(client_socket, client_address):
                     client.socket.send("ERROR: Subject Not Found".encode())
             else:
                 print(f"ERROR: message tag {message[1]} unknown")
-
-
+                
+        # outside of the while loop. Shut down connection and thread
+        client.socket.close()
+        
     except Exception as e:
         print(f"ERROR {e}")
     finally:
-        server.close()
-        print(f"[INFO] Connection clsoed {client_address}")
+        client.socket.close()
+        print(f"Connection closed {client_address}")
         exit()
 
 
@@ -89,13 +109,13 @@ def weatherNotifier():
     while True:
         notification = notifications["WEATHER"].get() # this will block until there is something to grab
         with clientlock:
-            for client in clients:
-                if client.subscription["NEWS"]:
-                    if (client.offline):
+            for client_name in clients:
+                if clients[client_name].subscription["NEWS"]:
+                    if (clients[client_name].offline):
                         print("PHASE 2 cleint is offline")
                     else:
                         print("sending message ")
-                        client.socket.send(f"NOTICICATION, WEATHER, {notification}".encode())
+                        clients[client_name].socket.send(f"NOTICICATION, WEATHER, {notification}".encode())
         all_weather.append(notification)
 
 
@@ -103,17 +123,14 @@ def newsNotifier():
     while True:
         notification = notifications["NEWS"].get() # this will block until there is something to grab
         with clientlock:
-            for client in clients:
-                if client.subscription["NEWS"]:
-                    if (client.offline):
+            for client_name in clients:
+                if clients[client_name].subscription["NEWS"]:
+                    if (clients[client_name].offline):
                         print("PHASE 2 cleint is offline")
                     else:
                         print("sending message ")
-                        client.socket.send(f"NOTICICATION, NEWS, {notification}".encode())
+                        clients[client_name].socket.send(f"NOTICICATION, NEWS, {notification}".encode())
         all_news.append(notification)
-
-
-
 
 print("Starting Server")
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

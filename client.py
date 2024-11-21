@@ -82,7 +82,8 @@ def disconnect():
         messages_out.put("DISC\n")
     print("Succsefully disconnected")
 
-def connect(client_name):
+def connect(client_name, first_connection = False):
+    
     try:
         print("Starting Client")    
         
@@ -100,10 +101,16 @@ def connect(client_name):
         send_thread.start()
         
         CONN_ACK.clear()
-        messages_out.put(f"{client_name}, CONN\n")
+        if first_connection:
+            connection_message = f"{client_name}, CONN\n"
+        else:
+            connection_message = f"RECONNECT, {client_name}\n"
+
+        messages_out.put(connection_message)
         while not CONN_ACK.wait(timeout = 3):
             print("Connection not ACK'ed, trying again")
-            messages_out.put(f"{client_name}, CONN\n")
+            messages_out.put(connection_message)
+        firstconnection = False
             
         print("Client connected")
         return True
@@ -126,24 +133,8 @@ if __name__ == "__main__":
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     
-    # setup socket and connect
-    # print("Starting Client")
-    # client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reusing the port
-    # client.connect(("localhost", SERVERPORTNUMBER))
 
-    # # start sending and reciveing threads
-    # recevie_thread = threading.Thread(target = recevie_messages, args=([client]))
-    # recevie_thread.daemon = True
-    # recevie_thread.start()
-
-    # send_thread = threading.Thread(target = send_messages, args=([]))
-    # send_thread.daemon = True
-    # send_thread.start()
-
-    connect(client_name)
-
-    
+    connect(client_name, first_connection=True)
     connected = True
     while True:
         if (connected):
@@ -162,6 +153,9 @@ if __name__ == "__main__":
         else: # not connected
             action = input("Would you like to reconnect? [Y/N]\n")
             if action.lower() == "yes" or action.lower() == "y":
-                connected = connect(client_name)
+                connected = connect(client_name, first_connection=False)
+            else:
+                print("Ending CLient")
+                break
                 
             
