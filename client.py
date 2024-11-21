@@ -18,23 +18,26 @@ def recevie_messages(client_socket):
         while True:
             time.sleep(0.1)
             message = client_socket.recv(1024).decode()
-            print(f"[{message}]")
-            if message == "CONN_ACK":
-                CONN_ACK.set()
-            elif message == "SUB_ACK":
-                SUB_ACK.set()
-            elif message == "ERROR: Subscription Failed - Subject Not Found":
-                SUB_FAILED.set()
-            elif message == "DISC_ACK":
-                DISC_ACK.set()
-                END_SENDER.set()
-                messages_out.put("") # put an empty/dummy message in the out Que to make ure the thread closes
-                break   # break to the finally of the try block to handle ending this thread
-            elif message == "ERROR: Not Subscribed" :
-                PUB_EROR.set()
-                print("tried to publish info to a topic we are not subscribed to")
-            # else:   # put messages that are not ACK in a queue to be stored/processed if we want more than just printing them
-            #     messages_in.put(message)
+            messages = message.split('\n')
+            for message in messages:
+                if  message != "" :
+                    print(f"[{message}]")
+                    if message == "CONN_ACK":
+                        CONN_ACK.set()
+                    elif message == "SUB_ACK":
+                        SUB_ACK.set()
+                    elif message == "ERROR: Subscription Failed - Subject Not Found":
+                        SUB_FAILED.set()
+                    elif message == "DISC_ACK":
+                        DISC_ACK.set()
+                        END_SENDER.set()
+                        messages_out.put("") # put an empty/dummy message in the out Que to make ure the thread closes
+                        break   # break to the finally of the try block to handle ending this thread
+                    elif message == "ERROR: Not Subscribed" :
+                        PUB_EROR.set()
+                        print("tried to publish info to a topic we are not subscribed to")
+                    # else:   # put messages that are not ACK in a queue to be stored/processed if we want more than just printing them
+                    #     messages_in.put(message)
     except Exception as e:
         print(f"ERROR {e} in recevie_messages")
     finally:
@@ -123,11 +126,12 @@ if __name__ == "__main__":
     messages_in = queue.Queue()
     
     # get user info
-    # lient_name = input("What is the name of this client?\n")
     client_name = "Client Number 1"
+    client_name = input("What is the name of this client?\n")
     
-    # CLIENTPORTNUMBER = int(input("What is the client port number\n"))
-    CLIENTPORTNUMBER = 5678
+    CLIENTPORTNUMBER = 5678   
+    CLIENTPORTNUMBER = int(input("What is the client port number\n"))
+
 
 
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
