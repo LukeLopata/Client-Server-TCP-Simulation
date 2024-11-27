@@ -8,17 +8,32 @@ class Client:
         self.name = name
         self.socket = socket
         self.address = address
-        self.subscription = {"NEWS" : False, "WEATHER" : False}
+        # self.subscription = {"NEWS" : False, "WEATHER" : False}
+        # self.subscription = dict.fromkeys(list_of_subjects, False)
+        self.subscription = {subject: False for subject in list_of_subjects}
+
         self.offline = False    
-        self.pending_notifications = {"NEWS" : queue.Queue(), "WEATHER" : queue.Queue()}
+        # self.pending_notifications = {"NEWS" : queue.Queue(), "WEATHER" : queue.Queue()}
+        # self.pending_notifications = dict.fromkeys(list_of_subjects, queue.Queue())
+        self.pending_notifications = {subject: queue.Queue() for subject in list_of_subjects}
+
 
 
 PORTNUMBER = 1234
+list_of_subjects = ["NEWS", "WEATHER"]
 clients = {}
 clientlock = threading.Lock()
 
-notifications = {"NEWS" : queue.Queue(), "WEATHER" : queue.Queue()}
-total_history = {"NEWS" : [], "WEATHER" : []}
+
+# notifications = {"NEWS" : queue.Queue(), "WEATHER" : queue.Queue()}
+# notifications = dict.fromkeys(list_of_subjects, queue.Queue())
+notifications = {subject: queue.Queue() for subject in list_of_subjects}
+
+# total_history = {"NEWS" : [], "WEATHER" : []}
+# total_history = dict.fromkeys(list_of_subjects, [])
+total_history = {subject: [] for subject in list_of_subjects}
+
+
 
 
 def reconnect(client, client_socket, client_address):
@@ -36,6 +51,21 @@ def reconnect(client, client_socket, client_address):
                 client.socket.send(f"NOTIFICATION, {topic}, {message}\n".encode())
         except queue.Empty:
             continue
+
+def subscribe(client, message):
+    if (message[2].upper()) in client.subscription: # if the subject is one we have innitalized
+        if  not client.subscription[message[2].upper()]:
+            client.subscription[message[2].upper()] = True
+            print(f"{client.name} succsefully subscribed to {message[2].upper()}")
+            client.socket.send("SUB_ACK\n".encode())
+            # send all history of previous notification in this subject to the client when they subscribe
+            for notification in total_history[message[2].upper()]:
+                client.socket.send(f"{notification}\n".encode())
+        else:
+            print(f"{client.name} already subscribed to {message[2].upper()}")
+    else:
+        client.socket.send("ERROR: Subscription Failed - Subject Not Found".encode())
+    
 
 def handleClient(client_socket, client_address):
     message = client_socket.recv(1024).decode()
@@ -58,8 +88,7 @@ def handleClient(client_socket, client_address):
         if client_name in clients: # this shouldnt need a lock because all clients should have unique names
             client = clients[client_name]
             reconnect(client, client_socket, client_address)
-
-                    
+       
         else:
             print(f"failed to find client with name {client_name} in database")
             # TODO add a RECONNECT failed message back to the client to tell it that the name was not found in the database
@@ -69,41 +98,33 @@ def handleClient(client_socket, client_address):
         while True:
             time.sleep(0.1)
             message = client.socket.recv(1024).decode()
-            # if not message:
-            #     break
-
             print(f"     [MESSAGE from {client.address}]: {message}")
             message = message.split(",")
             message = [elem.strip() for elem in message] # strip all extra white space from the message
+            with clientlock:
+                if(message[0] == "DISC"):
+                    client.socket.send("DISC_ACK\n".encode())
+                    client.offline = True
+                    break
 
-            if(message[0] == "DISC"):
-                client.socket.send("DISC_ACK\n".encode())
-                client.offline = True
-                break
+                elif (message[0] != client.name):
+                    print("ERROR, name in message doesnt match name on file")
+                    print(f"On file: {client.name} Recieved: {message[0]}")
 
-            elif (message[0] != client.name):
-                print("ERROR, name in message doesnt match name on file")
-                print(f"On file: {client.name} Recieved: {message[0]}")
+                elif (message[1] == "SUB"):
+                    subscribe(client, message)
 
-            elif (message[1] == "SUB"):
-                if (message[2].upper()) in client.subscription:
-                    client.subscription[message[2].upper()] = True
-                    print(f"{client.name} succsefully subscribed to {message[2].upper()}")
-                    client.socket.send("SUB_ACK\n".encode())
-
-                else:
-                    client.socket.send("ERROR: Subscription Failed - Subject Not Found".encode())
-
-            elif(message[1] == "PUB"):
-                if (message[2].upper()) in client.subscription:
-                    if client.subscription[message[2].upper()]: # if we are subscribed to the topic
-                        notifications[message[2].upper()].put(message[3]) # add the notifcation to the corrisponding Q
+                elif(message[1] == "PUB"):
+                    if (message[2].upper()) in client.subscription: # if the subject is a valid subject
+                        if client.subscription[message[2].upper()]: # if we are subscribed to the subject
+                            notifications[message[2].upper()].put(message[3]) # add the notifcation to the corrisponding Q
+                        else:
+                            # print("Cannot publish to a subject not subscribed to") 
+                            client.socket.send("ERROR: Not Subscribed\n".encode())
                     else:
-                        print("Cannot publish to a subject not subscribed to") 
+                        client.socket.send("ERROR: Subject Not Found\n".encode())
                 else:
-                    client.socket.send("ERROR: Subject Not Found\n".encode())
-            else:
-                print(f"ERROR: message tag {message[1]} unknown")
+                    print(f"ERROR: message tag {message[1]} unknown")
                 
         # outside of the while loop. Shut down connection and thread
         client.socket.close()
@@ -115,8 +136,7 @@ def handleClient(client_socket, client_address):
         print(f"Connection closed {client_address}")
         exit()
 
-        
-        
+
 def Notifier(subject):
     while True:
         notification = notifications[subject].get() # this will block until there is a message published
@@ -125,10 +145,9 @@ def Notifier(subject):
                 if clients[client_name].subscription[subject]:
                     if (clients[client_name].offline):
                         clients[client_name].pending_notifications[subject].put(notification) # put notification in the clients pending que for that topic
-                        print("Client is offline. adding to peding notifications")
                     else:
-                        # print("sending message ")
                         clients[client_name].socket.send(f"NOTICICATION, {subject}, {notification}\n".encode())
+        # add all notifications to a data base for new clients to receve then they first connect
         total_history[subject].append(notification)
         
 
@@ -141,13 +160,15 @@ server.bind(('localhost', PORTNUMBER))
 server.listen()
 
 # make notification threads   
-news_notification_thread = threading.Thread(target=Notifier, args=(["NEWS"]))
-news_notification_thread.daemon = True
-news_notification_thread.start()
 
-weather_notification_thread = threading.Thread(target=Notifier, args=(["WEATHER"]))
-weather_notification_thread.daemon = True
-weather_notification_thread.start()
+for subject in list_of_subjects:
+    thread = threading.Thread(target=Notifier, args=([subject]))
+    thread.daemon = True
+    thread.start()
+
+# weather_notification_thread = threading.Thread(target=Notifier, args=(["WEATHER"]))
+# weather_notification_thread.daemon = True
+# weather_notification_thread.start()
 
 try:
     running = True

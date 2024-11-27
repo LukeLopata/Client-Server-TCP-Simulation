@@ -76,7 +76,8 @@ def subscribe(topic):
 
 
 def publish(subject, message):
-    messages_out.put(f"{client_name}, PUB, {subject}, {message}\n")
+    
+    messages_out.put(f"{client_name}, PUB, {subject.upper()}, {message}\n")
 
 def disconnect():
     messages_out.put("DISC\n")
@@ -141,7 +142,8 @@ if __name__ == "__main__":
     connect(client_name, first_connection=True)
     connected = True
     while True:
-        if (connected):
+        time.sleep(0.5) # wait a little bit to keep prompt at the bottom of STDOUT
+        if (connected): 
             action = input("What do you want to do. Options: sub, pub, disc\n")
             if action.lower() == "sub":
                 topic = input("What topic do you want to subscribe to?\n")
